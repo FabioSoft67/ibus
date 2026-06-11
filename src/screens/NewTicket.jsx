@@ -21,10 +21,11 @@ export default function NewTicket() {
     setLoading(true)
     try {
       await startProcess(name.trim(), problem.trim())
+      // Wait 2 s so Elasticsearch indexes the new task before the list loads.
+      await new Promise(r => setTimeout(r, 2000))
       navigate('/tickets')
     } catch (err) {
       setToast({ message: `Fehler: ${err.message}`, type: 'error' })
-    } finally {
       setLoading(false)
     }
   }
@@ -62,7 +63,7 @@ export default function NewTicket() {
             />
           </div>
           <button type="submit" className="btn btn--primary" disabled={loading}>
-            {loading ? 'Wird gesendet…' : 'Senden'}
+            {loading ? 'Ticket wird erstellt…' : 'Senden'}
           </button>
         </form>
       </div>

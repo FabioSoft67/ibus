@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  fetchTask,
-  fetchTaskVariables,
-  setTaskVariable,
-  completeTask,
-} from '../api/camunda.js'
+import { fetchTask, fetchTaskVariables, completeTask } from '../api/camunda.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 import Toast from '../components/Toast.jsx'
 
@@ -15,63 +10,59 @@ export default function TicketDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [task, setTask] = useState(null)
-  const [vars, setVars] = useState({})
-  const [status, setStatus] = useState('OFFEN')
-  const [loesung, setLoesung] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [task, setTask]         = useState(null)
+  const [vars, setVars]         = useState({})
+  const [status, setStatus]     = useState('OFFEN')
+  const [loesung, setLoesung]   = useState('')
+  const [loading, setLoading]   = useState(true)
   const [completing, setCompleting] = useState(false)
-  const [toast, setToast] = useState(null)
-  const [isMock, setIsMock] = useState(false)
+  const [toast, setToast]       = useState(null)
 
   const clearToast = useCallback(() => setToast(null), [])
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
       try {
-        const { task, isMock: mock1 } = await fetchTask(id)
-        const { variables, isMock: mock2 } = await fetchTaskVariables(id)
+        const [{ task, isMock: m1 }, { variables, isMock: m2 }] = await Promise.all([
+          fetchTask(id),
+          fetchTaskVariables(id),
+        ])
+        if (cancelled) return
         setTask(task)
         setVars(variables)
-        setStatus(variables.status?.value ?? 'OFFEN')
-        setLoesung(variables.loesung?.value ?? '')
-        setIsMock(mock1 || mock2)
-        if (mock1 || mock2) {
+        setStatus(variables.status ?? 'OFFEN')
+        setLoesung(variables.loesung ?? '')
+        if (m1 || m2) {
           setToast({
             message: 'Camunda nicht erreichbar – Mock-Daten werden angezeigt.',
             type: 'warning',
           })
         }
       } catch (err) {
-        setToast({ message: `Laden fehlgeschlagen: ${err.message}`, type: 'error' })
+        if (!cancelled) {
+          setToast({ message: `Laden fehlgeschlagen: ${err.message}`, type: 'error' })
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     load()
+    return () => { cancelled = true }
   }, [id])
 
-  async function handleSave() {
-    setSaving(true)
-    try {
-      if (!isMock) {
-        await setTaskVariable(id, 'status', status, 'String')
-        await setTaskVariable(id, 'loesung', loesung, 'String')
-      }
-      setToast({ message: 'Änderungen gespeichert.', type: 'success' })
-    } catch (err) {
-      setToast({ message: `Speichern fehlgeschlagen: ${err.message}`, type: 'error' })
-    } finally {
-      setSaving(false)
-    }
+  function handleSave() {
+    setToast({
+      message: 'Änderungen gespeichert – werden beim Schliessen übermittelt.',
+      type: 'success',
+    })
   }
 
   async function handleComplete() {
     if (!window.confirm('Task wirklich abschliessen?')) return
     setCompleting(true)
     try {
-      await completeTask(id)
+      await completeTask(id, { status, loesung, kundeGeklaert: true })
       setToast({ message: 'Task erfolgreich abgeschlossen.', type: 'success' })
       setTimeout(() => navigate('/tickets'), 1500)
     } catch (err) {
@@ -81,7 +72,7 @@ export default function TicketDetail() {
   }
 
   if (loading) return <p className="state-msg screen">Ticket wird geladen…</p>
-  if (!task) return <p className="state-msg screen">Ticket nicht gefunden.</p>
+  if (!task)   return <p className="state-msg screen">Ticket nicht gefunden.</p>
 
   return (
     <div className="screen">
@@ -97,21 +88,26 @@ export default function TicketDetail() {
           <StatusBadge status={status} />
         </div>
 
-        <p className="ticket-id">Task-ID: {task.id}</p>
+        <p className="ticket-id">
+          Task-ID: {task.userTaskKey}
+          {task.processName && (
+            <span className="ticket-process"> · {task.processName}</span>
+          )}
+        </p>
 
-        {vars.name?.value && (
+        {vars.name && (
           <div className="form__group">
             <label className="form__label">Erstellt von</label>
-            <input className="form__input" value={vars.name.value} readOnly />
+            <input className="form__input" value={String(vars.name)} readOnly />
           </div>
         )}
 
-        {vars.problem?.value && (
+        {vars.problem && (
           <div className="form__group">
             <label className="form__label">Problem</label>
             <textarea
               className="form__textarea"
-              value={vars.problem.value}
+              value={String(vars.problem)}
               readOnly
               rows={4}
             />
@@ -124,10 +120,10 @@ export default function TicketDetail() {
             id="status"
             className="form__select"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            disabled={saving || completing}
+            onChange={e => setStatus(e.target.value)}
+            disabled={completing}
           >
-            {STATUS_OPTIONS.map((s) => (
+            {STATUS_OPTIONS.map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
@@ -141,8 +137,8 @@ export default function TicketDetail() {
             placeholder="Lösungsbeschreibung…"
             rows={5}
             value={loesung}
-            onChange={(e) => setLoesung(e.target.value)}
-            disabled={saving || completing}
+            onChange={e => setLoesung(e.target.value)}
+            disabled={completing}
           />
         </div>
 
@@ -150,14 +146,14 @@ export default function TicketDetail() {
           <button
             className="btn btn--primary"
             onClick={handleSave}
-            disabled={saving || completing}
+            disabled={completing}
           >
-            {saving ? 'Wird gespeichert…' : 'Speichern'}
+            Speichern
           </button>
           <button
             className="btn btn--danger"
             onClick={handleComplete}
-            disabled={saving || completing}
+            disabled={completing}
           >
             {completing ? 'Wird abgeschlossen…' : 'Schliessen'}
           </button>

@@ -13,7 +13,8 @@ export default function TicketList() {
 
   const clearToast = useCallback(() => setToast(null), [])
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
     fetchTasks().then(({ tasks, isMock }) => {
       setTasks(tasks)
       if (isMock) {
@@ -26,22 +27,21 @@ export default function TicketList() {
     })
   }, [])
 
+  useEffect(() => { load() }, [load])
+
   const filtered = tasks.filter((t) => {
     const q = search.toLowerCase()
     return (
       (t.name ?? '').toLowerCase().includes(q) ||
-      t.id.toLowerCase().includes(q)
+      String(t.userTaskKey).toLowerCase().includes(q)
     )
   })
 
   function formatDate(iso) {
     if (!iso) return '–'
     return new Date(iso).toLocaleString('de-CH', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
     })
   }
 
@@ -57,6 +57,9 @@ export default function TicketList() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <button className="btn btn--ghost" onClick={load} disabled={loading}>
+          {loading ? 'Lädt…' : 'Aktualisieren'}
+        </button>
       </div>
 
       {loading && <p className="state-msg">Tickets werden geladen…</p>}
@@ -69,17 +72,18 @@ export default function TicketList() {
         <div className="ticket-grid">
           {filtered.map((task) => (
             <button
-              key={task.id}
+              key={task.userTaskKey}
               className="ticket-card"
-              onClick={() => navigate(`/tickets/${task.id}`)}
+              onClick={() => navigate(`/tickets/${task.userTaskKey}`)}
             >
               <div className="ticket-card__top">
                 <span className="ticket-card__title">{task.name ?? '(kein Titel)'}</span>
                 <StatusBadge status="OFFEN" />
               </div>
               <div className="ticket-card__meta">
-                <span className="ticket-card__id">ID: {task.id}</span>
-                <span className="ticket-card__date">{formatDate(task.created)}</span>
+                <span className="ticket-card__id">ID: {task.userTaskKey}</span>
+                <span>{task.processName ?? ''}</span>
+                <span className="ticket-card__date">{formatDate(task.creationDate)}</span>
               </div>
             </button>
           ))}

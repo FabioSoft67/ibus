@@ -5,8 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/engine-rest': {
-        target: 'http://localhost:8080',
+      '/v2': {
+        target: 'http://localhost:8088',
         changeOrigin: true,
       },
     },
